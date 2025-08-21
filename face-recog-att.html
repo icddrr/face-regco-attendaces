@@ -289,6 +289,16 @@
             from { transform: translateX(100%); }
             to { transform: translateX(0); }
         }
+
+        .demo-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -299,15 +309,19 @@
         </div>
         
         <div class="nav-tabs">
-            <button class="tab-button active" onclick="showTab('checkin')">เช็คชื่อ</button>
-            <button class="tab-button" onclick="showTab('register')">ลงทะเบียน</button>
-            <button class="tab-button" onclick="showTab('employees')">พนักงาน</button>
-            <button class="tab-button" onclick="showTab('reports')">รายงาน</button>
+            <button class="tab-button active" onclick="showTab('checkin', this)">เช็คชื่อ</button>
+            <button class="tab-button" onclick="showTab('register', this)">ลงทะเบียน</button>
+            <button class="tab-button" onclick="showTab('employees', this)">พนักงาน</button>
+            <button class="tab-button" onclick="showTab('reports', this)">รายงาน</button>
             <button class="tab-button" onclick="testConnection()">🔧 ทดสอบการเชื่อมต่อ</button>
         </div>
         
         <!-- แท็บเช็คชื่อ -->
         <div id="checkin" class="tab-content active">
+            <div class="demo-warning">
+                ⚠️ <strong>DEMO MODE:</strong> กรุณากรอก Google Apps Script URL ในโค้ดเพื่อเชื่อมต่อกับฐานข้อมูล
+            </div>
+            
             <h2>🕐 เช็คชื่อเข้า-ออกทำงาน</h2>
             
             <div class="camera-section">
@@ -439,8 +453,8 @@
         let registerStream = null;
         let lastEmployeeId = null;
         
-        // URL ของ Google Apps Script Web App
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec';
+        // URL ของ Google Apps Script Web App - กรุณาแก้ไข URL นี้
+        const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
         
         // โหลด face-api models
         async function loadModels() {
@@ -580,7 +594,77 @@
                     return;
                 }
                 
+                // ตรวจสอบ URL
+                if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                    showStatus('checkinStatus', 'error', '❌ กรุณากรอก Google Apps Script URL ในโค้ด');
+                    showNotification('Demo Mode: ไม่ได้เชื่อมต่อกับฐานข้อมูล', 'error');
+                    return;
+                }
+                
                 // ส่งข้อมูลไปยัง Google Apps Script
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'check_attendance',
+                        face_descriptor: Array.from(detections.descriptor)
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const employee = result.data.employee;
+                    const action = result.data.action;
+                    const actionText = action === 'check_in' ? 'เข้าทำงาน' : 'ออกจากงาน';
+                    
+                    showStatus('checkinStatus', 'success', 
+                        `✅ ${actionText}สำเร็จ!\nพนักงาน: ${employee.name}\nแผนก: ${employee.department}\nเวลา: ${result.data.time}`
+                    );
+                    
+                    showNotification(`${employee.name} ${actionText}เสร็จสิ้น`, 'success');
+                    
+                    // อัปเดตสถิติ
+                    loadTodayStats();
+                    
+                } else {
+                    showStatus('checkinStatus', 'error', `❌ ${result.message}`);
+                }
+                
+            } catch (error) {
+                console.error('Check attendance error:', error);
+                showStatus('checkinStatus', 'error', '❌ เกิดข้อผิดพลาดในการเช็คชื่อ');
+            }
+        }
+        
+        // ลงทะเบียนพนักงาน
+        async function registerEmployee() {
+            const name = document.getElementById('empName').value.trim();
+            const department = document.getElementById('empDepartment').value;
+            const position = document.getElementById('empPosition').value.trim();
+            
+            if (!name || !department || !position) {
+                showNotification('กรุณากรอกข้อมูลให้ครบถ้วน', 'error');
+                return;
+            }
+            
+            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                showNotification('Demo Mode: จำลองการลงทะเบียนสำเร็จ', 'success');
+                lastEmployeeId = 'EMP' + Date.now();
+                
+                // เคลียร์ฟอร์ม
+                document.getElementById('empName').value = '';
+                document.getElementById('empDepartment').value = '';
+                document.getElementById('empPosition').value = '';
+                
+                // เปิดใช้งานการบันทึกใบหน้า
+                document.getElementById('captureFaceBtn').disabled = false;
+                return;
+            }
+            
+            try {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: {
@@ -669,24 +753,9 @@
                     return;
                 }
                 
-                // ส่งข้อมูลใบหน้าไปบันทึก
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        action: 'register_face',
-                        employee_id: lastEmployeeId,
-                        face_descriptor: Array.from(detections.descriptor)
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showStatus('registerStatus', 'success', '✅ บันทึกใบหน้าเสร็จสิ้น!');
-                    showNotification('ลงทะเบียนใบหน้าสำเร็จ!', 'success');
+                if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                    showStatus('registerStatus', 'success', '✅ จำลองการบันทึกใบหน้าสำเร็จ!');
+                    showNotification('Demo Mode: บันทึกใบหน้าเสร็จสิ้น', 'success');
                     
                     // ปิดกล้อง
                     if (registerStream) {
@@ -695,339 +764,4 @@
                     }
                     
                     lastEmployeeId = null;
-                    document.getElementById('captureFaceBtn').disabled = true;
-                    
-                } else {
-                    showStatus('registerStatus', 'error', '❌ เกิดข้อผิดพลาดในการบันทึก');
-                }
-                
-            } catch (error) {
-                console.error('Capture face error:', error);
-                showStatus('registerStatus', 'error', '❌ เกิดข้อผิดพลาดในการบันทึกใบหน้า');
-            }
-        }
-        
-        // โหลดรายชื่อพนักงาน
-        async function loadEmployees() {
-            try {
-                const response = await fetch(`${SCRIPT_URL}?action=get_employees`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    displayEmployees(result.data);
-                } else {
-                    showNotification('เกิดข้อผิดพลาดในการโหลดรายชื่อพนักงาน', 'error');
-                }
-                
-            } catch (error) {
-                console.error('Load employees error:', error);
-                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
-            }
-        }
-        
-        // แสดงรายชื่อพนักงาน
-        function displayEmployees(employees) {
-            const container = document.getElementById('employeesList');
-            
-            if (employees.length === 0) {
-                container.innerHTML = '<p>ยังไม่มีข้อมูลพนักงาน</p>';
-                return;
-            }
-            
-            let html = '';
-            employees.forEach(employee => {
-                html += `
-                    <div class="employee-card">
-                        <h4>${employee.name}</h4>
-                        <p><strong>รหัส:</strong> ${employee.employee_id}</p>
-                        <p><strong>แผนก:</strong> ${employee.department}</p>
-                        <p><strong>ตำแหน่ง:</strong> ${employee.position}</p>
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
-        
-        // โหลดรายงานการเข้าทำงาน
-        async function loadAttendanceReport() {
-            const date = document.getElementById('reportDate').value || 
-                         new Date().toISOString().split('T')[0];
-            
-            try {
-                const response = await fetch(`${SCRIPT_URL}?action=get_today_attendance`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    displayAttendanceReport(result.data);
-                } else {
-                    showNotification('เกิดข้อผิดพลาดในการโหลดรายงาน', 'error');
-                }
-                
-            } catch (error) {
-                console.error('Load attendance report error:', error);
-                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
-            }
-        }
-        
-        // แสดงรายงานการเข้าทำงาน
-        function displayAttendanceReport(attendance) {
-            const container = document.getElementById('attendanceReport');
-            
-            if (attendance.length === 0) {
-                container.innerHTML = '<p>ไม่มีข้อมูลการเข้าทำงานในวันที่เลือก</p>';
-                return;
-            }
-            
-            let html = `
-                <table class="attendance-table">
-                    <thead>
-                        <tr>
-                            <th>วันที่</th>
-                            <th>ชื่อ</th>
-                            <th>เข้างาน</th>
-                            <th>ออกงาน</th>
-                            <th>สถานะ</th>
-                            <th>ชั่วโมงทำงาน</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            attendance.forEach(record => {
-                const workingHours = calculateWorkingHours(record.check_in, record.check_out);
-                const statusText = record.status === 'completed' ? 'เสร็จสิ้น' : 'กำลังทำงาน';
-                
-                html += `
-                    <tr>
-                        <td>${record.date}</td>
-                        <td>${record.name}</td>
-                        <td>${record.check_in || '-'}</td>
-                        <td>${record.check_out || '-'}</td>
-                        <td>${statusText}</td>
-                        <td>${workingHours} ชั่วโมง</td>
-                    </tr>
-                `;
-            });
-            
-            html += '</tbody></table>';
-            container.innerHTML = html;
-        }
-        
-        // คำนวณชั่วโมงทำงาน
-        function calculateWorkingHours(checkIn, checkOut) {
-            if (!checkIn || !checkOut) return 0;
-            
-            try {
-                const inTime = new Date(`1970-01-01 ${checkIn}`);
-                const outTime = new Date(`1970-01-01 ${checkOut}`);
-                const diffMs = outTime.getTime() - inTime.getTime();
-                const diffHours = diffMs / (1000 * 60 * 60);
-                
-                return Math.round(diffHours * 100) / 100;
-            } catch (error) {
-                return 0;
-            }
-        }
-        
-        // โหลดสถิติวันนี้
-        async function loadTodayStats() {
-            try {
-                const response = await fetch(`${SCRIPT_URL}?action=get_today_attendance`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    displayTodayStats(result.data);
-                }
-                
-            } catch (error) {
-                console.error('Load today stats error:', error);
-            }
-        }
-        
-        // แสดงสถิติวันนี้
-        function displayTodayStats(attendance) {
-            const container = document.getElementById('todayStats');
-            
-            const totalEmployees = attendance.length;
-            const checkedIn = attendance.filter(record => record.check_in).length;
-            const checkedOut = attendance.filter(record => record.check_out).length;
-            const working = checkedIn - checkedOut;
-            
-            container.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number">${totalEmployees}</div>
-                    <div>พนักงานทั้งหมด</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${checkedIn}</div>
-                    <div>เข้าทำงานแล้ว</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${working}</div>
-                    <div>กำลังทำงาน</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${checkedOut}</div>
-                    <div>ออกจากงาน</div>
-                </div>
-            `;
-        }
-        
-        // ส่งออกรายงาน
-        function exportReport() {
-            // จำลองการส่งออกรายงาน
-            showNotification('กำลังเตรียมรายงาน...', 'success');
-            setTimeout(() => {
-                showNotification('รายงานถูกส่งไปยังอีเมลแล้ว', 'success');
-            }, 2000);
-        }
-        
-        // แสดงสถานะ
-        function showStatus(elementId, type, message) {
-            const element = document.getElementById(elementId);
-            element.className = `status ${type}`;
-            element.textContent = message;
-            element.style.display = 'block';
-        }
-        
-        // แสดงการแจ้งเตือน
-        function showNotification(message, type) {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
-        }
-        
-        // เปลี่ยนแท็บ
-        function showTab(tabName) {
-            // ซ่อนแท็บทั้งหมด
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // ลบ active class จากปุ่มทั้งหมด
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            // แสดงแท็บที่เลือก
-            document.getElementById(tabName).classList.add('active');
-            
-            // เพิ่ม active class ให้ปุ่มที่กด
-            event.target.classList.add('active');
-            
-            // โหลดข้อมูลตามแท็บ
-            if (tabName === 'employees') {
-                loadEmployees();
-            } else if (tabName === 'reports') {
-                document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
-                loadAttendanceReport();
-            } else if (tabName === 'checkin') {
-                loadTodayStats();
-            }
-        }
-        
-        // ทดสอบการเชื่อมต่อ Google Apps Script
-        async function testConnection() {
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-                showNotification('กรุณาใส่ URL ของ Google Apps Script ในโค้ด', 'error');
-                return;
-            }
-            
-            try {
-                showNotification('กำลังทดสอบการเชื่อมต่อ...', 'info');
-                
-                const response = await fetch(`${SCRIPT_URL}?action=test`, {
-                    method: 'GET',
-                    mode: 'cors'
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showNotification('✅ เชื่อมต่อ Google Apps Script สำเร็จ!', 'success');
-                    console.log('Connection test successful:', result);
-                } else {
-                    showNotification('❌ ทดสอบการเชื่อมต่อล้มเหลว', 'error');
-                    console.error('Connection test failed:', result);
-                }
-                
-            } catch (error) {
-                console.error('Connection test error:', error);
-                showNotification('❌ ไม่สามารถเชื่อมต่อได้: ' + error.message, 'error');
-            }
-        }
-        document.addEventListener('DOMContentLoaded', async function() {
-            console.log('Face Recognition Attendance System โหลดเสร็จแล้ว!');
-            
-            // ตั้งค่าวันที่ปัจจุบันในรายงาน
-            document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
-            
-            // โหลดสถิติวันนี้
-            loadTodayStats();
-            
-            // เตือนให้ใส่ URL ของ Google Apps Script
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-                showNotification('กรุณาใส่ URL ของ Google Apps Script ในโค้ด', 'error');
-            }
-        });
-    </script>
-</body>
-</html>
-                    },
-                    body: JSON.stringify({
-                        action: 'check_attendance',
-                        face_descriptor: Array.from(detections.descriptor)
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const employee = result.data.employee;
-                    const action = result.data.action;
-                    const actionText = action === 'check_in' ? 'เข้าทำงาน' : 'ออกจากงาน';
-                    
-                    showStatus('checkinStatus', 'success', 
-                        `✅ ${actionText}สำเร็จ!\n` +
-                        `พนักงาน: ${employee.name}\n` +
-                        `แผนก: ${employee.department}\n` +
-                        `เวลา: ${result.data.time}`
-                    );
-                    
-                    showNotification(`${employee.name} ${actionText}เสร็จสิ้น`, 'success');
-                    
-                    // อัปเดตสถิติ
-                    loadTodayStats();
-                    
-                } else {
-                    showStatus('checkinStatus', 'error', `❌ ${result.message}`);
-                }
-                
-            } catch (error) {
-                console.error('Check attendance error:', error);
-                showStatus('checkinStatus', 'error', '❌ เกิดข้อผิดพลาดในการเช็คชื่อ');
-            }
-        }
-        
-        // ลงทะเบียนพนักงาน
-        async function registerEmployee() {
-            const name = document.getElementById('empName').value.trim();
-            const department = document.getElementById('empDepartment').value;
-            const position = document.getElementById('empPosition').value.trim();
-            
-            if (!name || !department || !position) {
-                showNotification('กรุณากรอกข้อมูลให้ครบถ้วน', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
+                    document.getElementById('captur
