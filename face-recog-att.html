@@ -303,6 +303,7 @@
             <button class="tab-button" onclick="showTab('register')">ลงทะเบียน</button>
             <button class="tab-button" onclick="showTab('employees')">พนักงาน</button>
             <button class="tab-button" onclick="showTab('reports')">รายงาน</button>
+            <button class="tab-button" onclick="testConnection()">🔧 ทดสอบการเชื่อมต่อ</button>
         </div>
         
         <!-- แท็บเช็คชื่อ -->
@@ -931,7 +932,36 @@
             }
         }
         
-        // เริ่มต้นระบบ
+        // ทดสอบการเชื่อมต่อ Google Apps Script
+        async function testConnection() {
+            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                showNotification('กรุณาใส่ URL ของ Google Apps Script ในโค้ด', 'error');
+                return;
+            }
+            
+            try {
+                showNotification('กำลังทดสอบการเชื่อมต่อ...', 'info');
+                
+                const response = await fetch(`${SCRIPT_URL}?action=test`, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification('✅ เชื่อมต่อ Google Apps Script สำเร็จ!', 'success');
+                    console.log('Connection test successful:', result);
+                } else {
+                    showNotification('❌ ทดสอบการเชื่อมต่อล้มเหลว', 'error');
+                    console.error('Connection test failed:', result);
+                }
+                
+            } catch (error) {
+                console.error('Connection test error:', error);
+                showNotification('❌ ไม่สามารถเชื่อมต่อได้: ' + error.message, 'error');
+            }
+        }
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('Face Recognition Attendance System โหลดเสร็จแล้ว!');
             
@@ -942,7 +972,7 @@
             loadTodayStats();
             
             // เตือนให้ใส่ URL ของ Google Apps Script
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
+            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
                 showNotification('กรุณาใส่ URL ของ Google Apps Script ในโค้ด', 'error');
             }
         });
