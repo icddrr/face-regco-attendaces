@@ -650,7 +650,7 @@
                 return;
             }
             
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
                 showNotification('Demo Mode: จำลองการลงทะเบียนสำเร็จ', 'success');
                 lastEmployeeId = 'EMP' + Date.now();
                 
@@ -1058,7 +1058,7 @@
         
         // ทดสอบการเชื่อมต่อ Google Apps Script
         async function testConnection() {
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
                 showNotification('⚠️ กรุณาแก้ไข SCRIPT_URL ในโค้ดให้เป็น URL ของ Google Apps Script ที่ deploy แล้ว', 'error');
                 return;
             }
@@ -1098,7 +1098,7 @@
             loadTodayStats();
             
             // แสดงการเตือนถ้ายังไม่ได้ใส่ URL
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/execE') {
                 console.warn('⚠️ กรุณาแก้ไข SCRIPT_URL ใน JavaScript เพื่อเชื่อมต่อกับ Google Apps Script');
             }
         });
