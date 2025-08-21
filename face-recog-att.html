@@ -1,0 +1,453 @@
+/**
+ * Face Recognition Attendance System - Google Apps Script Backend
+ * ระบบเช็คชื่อด้วยการจดจำใบหน้า
+ */
+
+// กำหนดค่าตัวแปร
+const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE'; // ใส่ ID ของ Google Sheets
+const EMPLOYEES_SHEET = 'employees';
+const ATTENDANCE_SHEET = 'attendance';
+const FACE_DATA_SHEET = 'face_data';
+
+/**
+ * ฟังก์ชันหลักสำหรับรับ HTTP requests
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    
+    switch(action) {
+      case 'register_employee':
+        return registerEmployee(data);
+      case 'register_face':
+        return registerFace(data);
+      case 'check_attendance':
+        return checkAttendance(data);
+      case 'get_attendance_report':
+        return getAttendanceReport(data);
+      default:
+        return createResponse(false, 'Invalid action');
+    }
+  } catch (error) {
+    Logger.log('Error in doPost: ' + error.toString());
+    return createResponse(false, 'Server error: ' + error.toString());
+  }
+}
+
+function doGet(e) {
+  const action = e.parameter.action;
+  
+  switch(action) {
+    case 'get_employees':
+      return getEmployees();
+    case 'get_today_attendance':
+      return getTodayAttendance();
+    default:
+      return createResponse(false, 'Invalid GET action');
+  }
+}
+
+/**
+ * ลงทะเบียนพนักงานใหม่
+ */
+function registerEmployee(data) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const employeeSheet = ss.getSheetByName(EMPLOYEES_SHEET);
+    
+    // สร้าง employee ID ใหม่
+    const employeeId = 'EMP' + Utilities.formatDate(new Date(), 'GMT+7', 'yyyyMMddHHmmss');
+    
+    const newRow = [
+      employeeId,
+      data.name,
+      data.department,
+      data.position,
+      data.photo_url || ''
+    ];
+    
+    employeeSheet.appendRow(newRow);
+    
+    Logger.log('Employee registered: ' + employeeId);
+    return createResponse(true, 'Employee registered successfully', {
+      employee_id: employeeId
+    });
+    
+  } catch (error) {
+    Logger.log('Error registering employee: ' + error.toString());
+    return createResponse(false, 'Failed to register employee');
+  }
+}
+
+/**
+ * ลงทะเบียนข้อมูลใบหน้า
+ */
+function registerFace(data) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const faceDataSheet = ss.getSheetByName(FACE_DATA_SHEET);
+    
+    // ตรวจสอบว่ามีข้อมูลใบหน้าของพนักงานนี้แล้วหรือยัง
+    const existingData = faceDataSheet.getDataRange().getValues();
+    const existingRowIndex = existingData.findIndex(row => row[0] === data.employee_id);
+    
+    const faceDescriptor = JSON.stringify(data.face_descriptor);
+    const currentDate = new Date();
+    
+    if (existingRowIndex > 0) {
+      // อัปเดตข้อมูลเดิม
+      faceDataSheet.getRange(existingRowIndex + 1, 2).setValue(faceDescriptor);
+      faceDataSheet.getRange(existingRowIndex + 1, 4).setValue(currentDate);
+    } else {
+      // เพิ่มข้อมูลใหม่
+      const newRow = [
+        data.employee_id,
+        faceDescriptor,
+        currentDate,
+        currentDate
+      ];
+      faceDataSheet.appendRow(newRow);
+    }
+    
+    Logger.log('Face data registered for: ' + data.employee_id);
+    return createResponse(true, 'Face data registered successfully');
+    
+  } catch (error) {
+    Logger.log('Error registering face: ' + error.toString());
+    return createResponse(false, 'Failed to register face data');
+  }
+}
+
+/**
+ * เช็คชื่อเข้า-ออก
+ */
+function checkAttendance(data) {
+  try {
+    // หาพนักงานที่ตรงกับใบหน้า
+    const matchedEmployee = findMatchingFace(data.face_descriptor);
+    
+    if (!matchedEmployee) {
+      return createResponse(false, 'ไม่พบข้อมูลพนักงานที่ตรงกับใบหน้านี้');
+    }
+    
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const attendanceSheet = ss.getSheetByName(ATTENDANCE_SHEET);
+    const today = Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd');
+    const currentTime = Utilities.formatDate(new Date(), 'GMT+7', 'HH:mm:ss');
+    
+    // ตรวจสอบว่าเช็คชื่อวันนี้แล้วหรือยัง
+    const attendanceData = attendanceSheet.getDataRange().getValues();
+    const todayRecord = attendanceData.find(row => 
+      row[0] === today && row[1] === matchedEmployee.employee_id
+    );
+    
+    if (todayRecord) {
+      // มีการเช็คชื่อแล้ว - อัปเดต check_out
+      const rowIndex = attendanceData.indexOf(todayRecord) + 1;
+      attendanceSheet.getRange(rowIndex, 5).setValue(currentTime); // column E = check_out
+      attendanceSheet.getRange(rowIndex, 6).setValue('completed'); // column F = status
+      
+      return createResponse(true, 'เช็คชื่อออกเสร็จสิ้น', {
+        employee: matchedEmployee,
+        action: 'check_out',
+        time: currentTime
+      });
+    } else {
+      // ยังไม่เช็คชื่อ - สร้างรายการใหม่
+      const newRow = [
+        today,
+        matchedEmployee.employee_id,
+        matchedEmployee.name,
+        currentTime, // check_in
+        '', // check_out
+        'checked_in' // status
+      ];
+      attendanceSheet.appendRow(newRow);
+      
+      return createResponse(true, 'เช็คชื่อเข้าเสร็จสิ้น', {
+        employee: matchedEmployee,
+        action: 'check_in',
+        time: currentTime
+      });
+    }
+    
+  } catch (error) {
+    Logger.log('Error checking attendance: ' + error.toString());
+    return createResponse(false, 'เกิดข้อผิดพลาดในการเช็คชื่อ');
+  }
+}
+
+/**
+ * หาพนักงานที่มีใบหน้าตรงกัน
+ */
+function findMatchingFace(inputDescriptor) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const faceDataSheet = ss.getSheetByName(FACE_DATA_SHEET);
+    const employeeSheet = ss.getSheetByName(EMPLOYEES_SHEET);
+    
+    const faceData = faceDataSheet.getDataRange().getValues();
+    const employeeData = employeeSheet.getDataRange().getValues();
+    
+    let bestMatch = null;
+    let bestSimilarity = 0;
+    const SIMILARITY_THRESHOLD = 0.6; // ค่าเกณฑ์การจับคู่
+    
+    for (let i = 1; i < faceData.length; i++) { // เริ่มจาก index 1 เพื่อข้าม header
+      const storedDescriptor = JSON.parse(faceData[i][1]);
+      const similarity = calculateFaceSimilarity(inputDescriptor, storedDescriptor);
+      
+      if (similarity > bestSimilarity && similarity > SIMILARITY_THRESHOLD) {
+        bestSimilarity = similarity;
+        const employeeId = faceData[i][0];
+        
+        // หาข้อมูลพนักงาน
+        const employee = employeeData.find(row => row[0] === employeeId);
+        if (employee) {
+          bestMatch = {
+            employee_id: employee[0],
+            name: employee[1],
+            department: employee[2],
+            position: employee[3],
+            similarity: similarity
+          };
+        }
+      }
+    }
+    
+    return bestMatch;
+    
+  } catch (error) {
+    Logger.log('Error finding matching face: ' + error.toString());
+    return null;
+  }
+}
+
+/**
+ * คำนวณความคล้ายคลึงของใบหน้า (Euclidean distance)
+ */
+function calculateFaceSimilarity(descriptor1, descriptor2) {
+  if (descriptor1.length !== descriptor2.length) {
+    return 0;
+  }
+  
+  let sumSquaredDifferences = 0;
+  for (let i = 0; i < descriptor1.length; i++) {
+    const diff = descriptor1[i] - descriptor2[i];
+    sumSquaredDifferences += diff * diff;
+  }
+  
+  const distance = Math.sqrt(sumSquaredDifferences);
+  const similarity = 1 / (1 + distance); // แปลง distance เป็น similarity
+  
+  return similarity;
+}
+
+/**
+ * ดึงรายชื่อพนักงานทั้งหมด
+ */
+function getEmployees() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const employeeSheet = ss.getSheetByName(EMPLOYEES_SHEET);
+    const data = employeeSheet.getDataRange().getValues();
+    
+    const employees = [];
+    for (let i = 1; i < data.length; i++) { // ข้าม header row
+      employees.push({
+        employee_id: data[i][0],
+        name: data[i][1],
+        department: data[i][2],
+        position: data[i][3],
+        photo_url: data[i][4]
+      });
+    }
+    
+    return createResponse(true, 'Employees retrieved successfully', employees);
+    
+  } catch (error) {
+    Logger.log('Error getting employees: ' + error.toString());
+    return createResponse(false, 'Failed to get employees');
+  }
+}
+
+/**
+ * ดึงรายงานการเข้าทำงานวันนี้
+ */
+function getTodayAttendance() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const attendanceSheet = ss.getSheetByName(ATTENDANCE_SHEET);
+    const data = attendanceSheet.getDataRange().getValues();
+    const today = Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd');
+    
+    const todayAttendance = [];
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === today) {
+        todayAttendance.push({
+          date: data[i][0],
+          employee_id: data[i][1],
+          name: data[i][2],
+          check_in: data[i][3],
+          check_out: data[i][4],
+          status: data[i][5]
+        });
+      }
+    }
+    
+    return createResponse(true, 'Today attendance retrieved', todayAttendance);
+    
+  } catch (error) {
+    Logger.log('Error getting today attendance: ' + error.toString());
+    return createResponse(false, 'Failed to get attendance');
+  }
+}
+
+/**
+ * ดึงรายงานการเข้าทำงานตามช่วงวัน
+ */
+function getAttendanceReport(data) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const attendanceSheet = ss.getSheetByName(ATTENDANCE_SHEET);
+    const attendanceData = attendanceSheet.getDataRange().getValues();
+    
+    const startDate = data.start_date || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd');
+    const endDate = data.end_date || startDate;
+    const employeeId = data.employee_id || null;
+    
+    const report = [];
+    for (let i = 1; i < attendanceData.length; i++) {
+      const recordDate = attendanceData[i][0];
+      const recordEmployeeId = attendanceData[i][1];
+      
+      // กรองตามวันที่และพนักงาน
+      if (recordDate >= startDate && recordDate <= endDate) {
+        if (!employeeId || recordEmployeeId === employeeId) {
+          report.push({
+            date: attendanceData[i][0],
+            employee_id: attendanceData[i][1],
+            name: attendanceData[i][2],
+            check_in: attendanceData[i][3],
+            check_out: attendanceData[i][4],
+            status: attendanceData[i][5],
+            working_hours: calculateWorkingHours(attendanceData[i][3], attendanceData[i][4])
+          });
+        }
+      }
+    }
+    
+    return createResponse(true, 'Attendance report generated', report);
+    
+  } catch (error) {
+    Logger.log('Error generating attendance report: ' + error.toString());
+    return createResponse(false, 'Failed to generate report');
+  }
+}
+
+/**
+ * คำนวณชั่วโมงการทำงาน
+ */
+function calculateWorkingHours(checkIn, checkOut) {
+  if (!checkIn || !checkOut) {
+    return 0;
+  }
+  
+  try {
+    const inTime = new Date('1970-01-01 ' + checkIn);
+    const outTime = new Date('1970-01-01 ' + checkOut);
+    const diffMs = outTime.getTime() - inTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    return Math.round(diffHours * 100) / 100; // ทศนิยม 2 ตำแหน่ง
+  } catch (error) {
+    return 0;
+  }
+}
+
+/**
+ * สร้าง response object
+ */
+function createResponse(success, message, data = null) {
+  const response = {
+    success: success,
+    message: message,
+    timestamp: new Date().toISOString(),
+    data: data
+  };
+  
+  return ContentService
+    .createTextOutput(JSON.stringify(response))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * สร้างตารางในชีทถ้ายังไม่มี
+ */
+function initializeSheets() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    
+    // สร้างชีท employees
+    let employeeSheet = ss.getSheetByName(EMPLOYEES_SHEET);
+    if (!employeeSheet) {
+      employeeSheet = ss.insertSheet(EMPLOYEES_SHEET);
+      employeeSheet.getRange('A1:E1').setValues([
+        ['employee_id', 'name', 'department', 'position', 'photo_url']
+      ]);
+      employeeSheet.getRange('A1:E1').setFontWeight('bold');
+    }
+    
+    // สร้างชีท attendance
+    let attendanceSheet = ss.getSheetByName(ATTENDANCE_SHEET);
+    if (!attendanceSheet) {
+      attendanceSheet = ss.insertSheet(ATTENDANCE_SHEET);
+      attendanceSheet.getRange('A1:F1').setValues([
+        ['date', 'employee_id', 'name', 'check_in', 'check_out', 'status']
+      ]);
+      attendanceSheet.getRange('A1:F1').setFontWeight('bold');
+    }
+    
+    // สร้างชีท face_data
+    let faceDataSheet = ss.getSheetByName(FACE_DATA_SHEET);
+    if (!faceDataSheet) {
+      faceDataSheet = ss.insertSheet(FACE_DATA_SHEET);
+      faceDataSheet.getRange('A1:D1').setValues([
+        ['employee_id', 'face_descriptor', 'created_date', 'last_updated']
+      ]);
+      faceDataSheet.getRange('A1:D1').setFontWeight('bold');
+    }
+    
+    Logger.log('Sheets initialized successfully');
+    return true;
+    
+  } catch (error) {
+    Logger.log('Error initializing sheets: ' + error.toString());
+    return false;
+  }
+}
+
+/**
+ * ฟังก์ชันทดสอบ
+ */
+function testSystem() {
+  Logger.log('Testing Face Recognition Attendance System...');
+  
+  // ทดสอบการสร้างชีท
+  const sheetsCreated = initializeSheets();
+  Logger.log('Sheets creation test: ' + (sheetsCreated ? 'PASSED' : 'FAILED'));
+  
+  // ทดสอบการลงทะเบียนพนักงาน
+  const testEmployee = {
+    action: 'register_employee',
+    name: 'ทดสอบ พนักงาน',
+    department: 'IT',
+    position: 'Developer'
+  };
+  
+  const registerResult = registerEmployee(testEmployee);
+  Logger.log('Employee registration test: ' + registerResult);
+  
+  Logger.log('System test completed');
+}
