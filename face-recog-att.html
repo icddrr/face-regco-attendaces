@@ -285,6 +285,10 @@
             background: #dc3545;
         }
         
+        .notification.info {
+            background: #17a2b8;
+        }
+        
         @keyframes slideIn {
             from { transform: translateX(100%); }
             to { transform: translateX(0); }
@@ -299,9 +303,37 @@
             margin-bottom: 20px;
             text-align: center;
         }
+        
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        
+        .connection-status.connected {
+            background: #28a745;
+            color: white;
+        }
+        
+        .connection-status.disconnected {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .connection-status.demo {
+            background: #ffc107;
+            color: #212529;
+        }
     </style>
 </head>
 <body>
+    <div id="connectionStatus" class="connection-status demo">DEMO MODE</div>
+    
     <div class="container">
         <div class="header">
             <h1>🎯 ระบบเช็คชื่อด้วย Face Recognition</h1>
@@ -318,7 +350,7 @@
         
         <!-- แท็บเช็คชื่อ -->
         <div id="checkin" class="tab-content active">
-            <div class="demo-warning">
+            <div class="demo-warning" id="demoWarning">
                 ⚠️ <strong>DEMO MODE:</strong> กรุณากรอก Google Apps Script URL ในโค้ดเพื่อเชื่อมต่อกับฐานข้อมูล
             </div>
             
@@ -452,9 +484,57 @@
         let currentStream = null;
         let registerStream = null;
         let lastEmployeeId = null;
+        let isConnected = false;
         
         // URL ของ Google Apps Script Web App - กรุณาแก้ไข URL นี้
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec';
+        
+        // ตรวจสอบการเชื่อมต่อเมื่อโหลดหน้า
+        function checkScriptURL() {
+            const isDemoMode = SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec';
+            const statusElement = document.getElementById('connectionStatus');
+            const demoWarning = document.getElementById('demoWarning');
+            
+            if (isDemoMode) {
+                statusElement.textContent = 'DEMO MODE';
+                statusElement.className = 'connection-status demo';
+                demoWarning.style.display = 'block';
+                isConnected = false;
+            } else {
+                demoWarning.style.display = 'none';
+                // ทดสอบการเชื่อมต่อจริง
+                testConnectionSilent();
+            }
+        }
+        
+        // ทดสอบการเชื่อมต่อแบบเงียบๆ
+        async function testConnectionSilent() {
+            try {
+                const response = await fetch(`${SCRIPT_URL}?action=test`, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                const result = await response.json();
+                const statusElement = document.getElementById('connectionStatus');
+                
+                if (result.success) {
+                    statusElement.textContent = 'CONNECTED';
+                    statusElement.className = 'connection-status connected';
+                    isConnected = true;
+                } else {
+                    statusElement.textContent = 'ERROR';
+                    statusElement.className = 'connection-status disconnected';
+                    isConnected = false;
+                }
+                
+            } catch (error) {
+                const statusElement = document.getElementById('connectionStatus');
+                statusElement.textContent = 'DISCONNECTED';
+                statusElement.className = 'connection-status disconnected';
+                isConnected = false;
+            }
+        }
         
         // โหลด face-api models
         async function loadModels() {
@@ -594,10 +674,11 @@
                     return;
                 }
                 
-                // ตรวจสอบ URL
-                if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/execE') {
-                    showStatus('checkinStatus', 'error', '❌ กรุณากรอก Google Apps Script URL ในโค้ด');
-                    showNotification('Demo Mode: ไม่ได้เชื่อมต่อกับฐานข้อมูล', 'error');
+                // ตรวจสอบโหมด Demo
+                if (!isConnected) {
+                    showStatus('checkinStatus', 'success', '✅ DEMO: จำลองการเช็คชื่อสำเร็จ!\nพนักงาน: สมชาย ใจดี\nแผนก: IT\nเวลา: ' + new Date().toLocaleTimeString('th-TH'));
+                    showNotification('Demo Mode: จำลองการเช็คชื่อสำเร็จ', 'success');
+                    loadTodayStats(); // โหลดสถิติตัวอย่าง
                     return;
                 }
                 
@@ -635,7 +716,7 @@
                 
             } catch (error) {
                 console.error('Check attendance error:', error);
-                showStatus('checkinStatus', 'error', '❌ เกิดข้อผิดพลาดในการเช็คชื่อ');
+                showStatus('checkinStatus', 'error', '❌ เกิดข้อผิดพลาดในการเช็คชื่อ: ' + error.message);
             }
         }
         
@@ -650,9 +731,10 @@
                 return;
             }
             
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
+            // ตรวจสอบโหมด Demo
+            if (!isConnected) {
                 showNotification('Demo Mode: จำลองการลงทะเบียนสำเร็จ', 'success');
-                lastEmployeeId = 'EMP' + Date.now();
+                lastEmployeeId = 'DEMO_EMP_' + Date.now();
                 
                 // เคลียร์ฟอร์ม
                 document.getElementById('empName').value = '';
@@ -665,6 +747,8 @@
             }
             
             try {
+                showNotification('กำลังลงทะเบียนพนักงาน...', 'info');
+                
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: {
@@ -693,12 +777,12 @@
                     document.getElementById('captureFaceBtn').disabled = false;
                     
                 } else {
-                    showNotification('เกิดข้อผิดพลาดในการลงทะเบียน', 'error');
+                    showNotification(`เกิดข้อผิดพลาด: ${result.message}`, 'error');
                 }
                 
             } catch (error) {
                 console.error('Register employee error:', error);
-                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message, 'error');
             }
         }
         
@@ -753,8 +837,9 @@
                     return;
                 }
                 
-                if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-                    showStatus('registerStatus', 'success', '✅ จำลองการบันทึกใบหน้าสำเร็จ!');
+                // ตรวจสอบโหมด Demo
+                if (!isConnected) {
+                    showStatus('registerStatus', 'success', '✅ DEMO: จำลองการบันทึกใบหน้าสำเร็จ!');
                     showNotification('Demo Mode: บันทึกใบหน้าเสร็จสิ้น', 'success');
                     
                     // ปิดกล้อง
@@ -797,21 +882,22 @@
                     document.getElementById('captureFaceBtn').disabled = true;
                     
                 } else {
-                    showStatus('registerStatus', 'error', '❌ เกิดข้อผิดพลาดในการบันทึก');
+                    showStatus('registerStatus', 'error', `❌ เกิดข้อผิดพลาด: ${result.message}`);
                 }
                 
             } catch (error) {
                 console.error('Capture face error:', error);
-                showStatus('registerStatus', 'error', '❌ เกิดข้อผิดพลาดในการบันทึกใบหน้า');
+                showStatus('registerStatus', 'error', '❌ เกิดข้อผิดพลาดในการบันทึกใบหน้า: ' + error.message);
             }
         }
         
         // โหลดรายชื่อพนักงาน
         async function loadEmployees() {
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
+            if (!isConnected) {
                 displayEmployees([
                     { employee_id: 'DEMO001', name: 'สมชาย ใจดี', department: 'IT', position: 'Developer' },
-                    { employee_id: 'DEMO002', name: 'สมหญิง รักงาน', department: 'HR', position: 'HR Manager' }
+                    { employee_id: 'DEMO002', name: 'สมหญิง รักงาน', department: 'HR', position: 'HR Manager' },
+                    { employee_id: 'DEMO003', name: 'สมศักดิ์ ขยันทำงาน', department: 'Finance', position: 'Accountant' }
                 ]);
                 return;
             }
@@ -823,12 +909,12 @@
                 if (result.success) {
                     displayEmployees(result.data);
                 } else {
-                    showNotification('เกิดข้อผิดพลาดในการโหลดรายชื่อพนักงาน', 'error');
+                    showNotification('เกิดข้อผิดพลาดในการโหลดรายชื่อพนักงาน: ' + result.message, 'error');
                 }
                 
             } catch (error) {
                 console.error('Load employees error:', error);
-                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message, 'error');
             }
         }
         
@@ -849,6 +935,8 @@
                         <p><strong>รหัส:</strong> ${employee.employee_id}</p>
                         <p><strong>แผนก:</strong> ${employee.department}</p>
                         <p><strong>ตำแหน่ง:</strong> ${employee.position}</p>
+                        ${employee.email ? `<p><strong>อีเมล:</strong> ${employee.email}</p>` : ''}
+                        ${employee.phone ? `<p><strong>โทรศัพท์:</strong> ${employee.phone}</p>` : ''}
                     </div>
                 `;
             });
@@ -861,10 +949,11 @@
             const date = document.getElementById('reportDate').value || 
                          new Date().toISOString().split('T')[0];
             
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
+            if (!isConnected) {
                 displayAttendanceReport([
-                    { date: date, name: 'สมชาย ใจดี', check_in: '08:30:00', check_out: '17:30:00', status: 'completed' },
-                    { date: date, name: 'สมหญิง รักงาน', check_in: '09:00:00', check_out: '', status: 'checked_in' }
+                    { date: date, name: 'สมชาย ใจดี', check_in: '08:30:00', check_out: '17:30:00', status: 'completed', working_hours: 9 },
+                    { date: date, name: 'สมหญิง รักงาน', check_in: '09:00:00', check_out: '18:00:00', status: 'completed', working_hours: 9 },
+                    { date: date, name: 'สมศักดิ์ ขยันทำงาน', check_in: '08:45:00', check_out: '', status: 'checked_in', working_hours: 0 }
                 ]);
                 return;
             }
@@ -876,12 +965,12 @@
                 if (result.success) {
                     displayAttendanceReport(result.data);
                 } else {
-                    showNotification('เกิดข้อผิดพลาดในการโหลดรายงาน', 'error');
+                    showNotification('เกิดข้อผิดพลาดในการโหลดรายงาน: ' + result.message, 'error');
                 }
                 
             } catch (error) {
                 console.error('Load attendance report error:', error);
-                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+                showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message, 'error');
             }
         }
         
@@ -910,7 +999,7 @@
             `;
             
             attendance.forEach(record => {
-                const workingHours = calculateWorkingHours(record.check_in, record.check_out);
+                const workingHours = record.working_hours || calculateWorkingHours(record.check_in, record.check_out);
                 const statusText = record.status === 'completed' ? 'เสร็จสิ้น' : 'กำลังทำงาน';
                 
                 html += `
@@ -936,9 +1025,14 @@
             try {
                 const inTime = new Date(`1970-01-01 ${checkIn}`);
                 const outTime = new Date(`1970-01-01 ${checkOut}`);
-                const diffMs = outTime.getTime() - inTime.getTime();
-                const diffHours = diffMs / (1000 * 60 * 60);
+                let diffMs = outTime.getTime() - inTime.getTime();
                 
+                // หากเวลาออกน้อยกว่าเวลาเข้า แสดงว่าข้ามวัน
+                if (diffMs < 0) {
+                    diffMs += 24 * 60 * 60 * 1000;
+                }
+                
+                const diffHours = diffMs / (1000 * 60 * 60);
                 return Math.round(diffHours * 100) / 100;
             } catch (error) {
                 return 0;
@@ -947,10 +1041,11 @@
         
         // โหลดสถิติวันนี้
         async function loadTodayStats() {
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
+            if (!isConnected) {
                 displayTodayStats([
                     { check_in: '08:30:00', check_out: '17:30:00' },
-                    { check_in: '09:00:00', check_out: '' }
+                    { check_in: '09:00:00', check_out: '18:00:00' },
+                    { check_in: '08:45:00', check_out: '' }
                 ]);
                 return;
             }
@@ -980,7 +1075,7 @@
             container.innerHTML = `
                 <div class="stat-card">
                     <div class="stat-number">${totalEmployees}</div>
-                    <div>พนักงานทั้งหมด</div>
+                    <div>รายการวันนี้</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number">${checkedIn}</div>
@@ -999,22 +1094,26 @@
         
         // ส่งออกรายงาน
         function exportReport() {
-            showNotification('กำลังเตรียมรายงาน...', 'success');
+            showNotification('กำลังเตรียมรายงาน...', 'info');
             setTimeout(() => {
-                showNotification('Demo Mode: จำลองการส่งออกรายงาน', 'success');
-            }, 2000);
+                if (!isConnected) {
+                    showNotification('Demo Mode: จำลองการส่งออกรายงาน', 'success');
+                } else {
+                    showNotification('ฟีเจอร์นี้อยู่ระหว่างการพัฒนา', 'info');
+                }
+            }, 1000);
         }
         
         // แสดงสถานะ
         function showStatus(elementId, type, message) {
             const element = document.getElementById(elementId);
             element.className = `status ${type}`;
-            element.textContent = message;
+            element.innerHTML = message.replace(/\n/g, '<br>');
             element.style.display = 'block';
         }
         
         // แสดงการแจ้งเตือน
-        function showNotification(message, type) {
+        function showNotification(message, type = 'info') {
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
             notification.textContent = message;
@@ -1022,7 +1121,7 @@
             
             setTimeout(() => {
                 notification.remove();
-            }, 3000);
+            }, 4000);
         }
         
         // เปลี่ยนแท็บ
@@ -1071,25 +1170,43 @@
                     mode: 'cors'
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
-                    showNotification('✅ เชื่อมต่อ Google Apps Script สำเร็จ!', 'success');
+                    isConnected = true;
+                    const statusElement = document.getElementById('connectionStatus');
+                    statusElement.textContent = 'CONNECTED';
+                    statusElement.className = 'connection-status connected';
+                    
+                    document.getElementById('demoWarning').style.display = 'none';
+                    
+                    showNotification(`✅ เชื่อมต่อสำเร็จ! Spreadsheet: ${result.data.spreadsheet_name || 'N/A'}`, 'success');
                     console.log('Connection test successful:', result);
                 } else {
-                    showNotification('❌ ทดสอบการเชื่อมต่อล้มเหลว', 'error');
-                    console.error('Connection test failed:', result);
+                    throw new Error(result.message || 'Unknown error');
                 }
                 
             } catch (error) {
                 console.error('Connection test error:', error);
-                showNotification('❌ ไม่สามารถเชื่อมต่อได้: ' + error.message, 'error');
+                isConnected = false;
+                const statusElement = document.getElementById('connectionStatus');
+                statusElement.textContent = 'ERROR';
+                statusElement.className = 'connection-status disconnected';
+                
+                showNotification(`❌ เชื่อมต่อล้มเหลว: ${error.message}`, 'error');
             }
         }
         
         // เมื่อโหลดหน้าเว็บเสร็จ
         document.addEventListener('DOMContentLoaded', async function() {
-            console.log('Face Recognition Attendance System โหลดเสร็จแล้ว!');
+            console.log('🎯 Face Recognition Attendance System เริ่มต้นแล้ว!');
+            
+            // ตรวจสอบ URL และสถานะการเชื่อมต่อ
+            checkScriptURL();
             
             // ตั้งค่าวันที่ปัจจุบันในรายงาน
             document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
@@ -1097,10 +1214,7 @@
             // โหลดสถิติวันนี้
             loadTodayStats();
             
-            // แสดงการเตือนถ้ายังไม่ได้ใส่ URL
-            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/execE') {
-                console.warn('⚠️ กรุณาแก้ไข SCRIPT_URL ใน JavaScript เพื่อเชื่อมต่อกับ Google Apps Script');
-            }
+            console.log('ระบบพร้อมใช้งาน!');
         });
     </script>
 </body>
