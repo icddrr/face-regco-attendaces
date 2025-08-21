@@ -454,7 +454,7 @@
         let lastEmployeeId = null;
         
         // URL ของ Google Apps Script Web App - กรุณาแก้ไข URL นี้
-        const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec';
         
         // โหลด face-api models
         async function loadModels() {
@@ -595,7 +595,7 @@
                 }
                 
                 // ตรวจสอบ URL
-                if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/execE') {
                     showStatus('checkinStatus', 'error', '❌ กรุณากรอก Google Apps Script URL ในโค้ด');
                     showNotification('Demo Mode: ไม่ได้เชื่อมต่อกับฐานข้อมูล', 'error');
                     return;
@@ -808,7 +808,7 @@
         
         // โหลดรายชื่อพนักงาน
         async function loadEmployees() {
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
                 displayEmployees([
                     { employee_id: 'DEMO001', name: 'สมชาย ใจดี', department: 'IT', position: 'Developer' },
                     { employee_id: 'DEMO002', name: 'สมหญิง รักงาน', department: 'HR', position: 'HR Manager' }
@@ -861,7 +861,7 @@
             const date = document.getElementById('reportDate').value || 
                          new Date().toISOString().split('T')[0];
             
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
                 displayAttendanceReport([
                     { date: date, name: 'สมชาย ใจดี', check_in: '08:30:00', check_out: '17:30:00', status: 'completed' },
                     { date: date, name: 'สมหญิง รักงาน', check_in: '09:00:00', check_out: '', status: 'checked_in' }
@@ -947,7 +947,7 @@
         
         // โหลดสถิติวันนี้
         async function loadTodayStats() {
-            if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+            if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwb2tnnQivdXskZIqg8Qn2QpH3hK-H0bUDIG2w48UGHu95Cpw8e5MOX92OPKxMS4Fzb/exec') {
                 displayTodayStats([
                     { check_in: '08:30:00', check_out: '17:30:00' },
                     { check_in: '09:00:00', check_out: '' }
